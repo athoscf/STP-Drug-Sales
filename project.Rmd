@@ -14,7 +14,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(astsa)
 library(fpp2)
 library(forecast)
-airline_pass <- read.csv("salesmonthly.csv", header = TRUE)
+airline_pass <- read.csv("salesweekly.csv", header = TRUE)
 
 # Get the first column
 first_column <- airline_pass[, 1] 
@@ -41,7 +41,7 @@ head(airline_pass)
 ## Time plot and analysis
 
 ```{r}
-airline_ts <- ts(airline_pass[,-1], start=2014, frequency=12)
+airline_ts <- ts(airline_pass[,-1], start=2014, frequency=52)
 tsplot(airline_ts, ylab="No. of passengers in thousands", xlab="Year", main="Monthly International Airline passengers")
 ```
 
