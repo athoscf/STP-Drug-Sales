@@ -11,9 +11,15 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ### Setup
 ```{r message=FALSE}
-library(astsa)
 library(fpp2)
 library(forecast)
+library(astsa)
+library(zoo)
+library(ggplot2)
+#library(latex2exp)
+#library(lubridate)
+#library(dplyr)
+library(scales)
 airline_pass <- read.csv("salesweekly.csv", header = TRUE)
 
 # Get the first column
@@ -148,6 +154,54 @@ lag1.plot(remainder_ts,12)
 
 Most correlation values present are close to zero, indicating the absence of correlation. The slightly higher correlation of the lag1 plot (of 0.40) indicates some autocorrelation between consecutive months. The negative value of the lag4 plot (of -0.33) indicates a possible 3 to 4 month cycle, that is, high values tend to be followed by low values 4 months later and vice-versa. The lag12 plot has relatively high correlation (of 0.29) and indicates some correlation between the values of the "same" month on consecutive years. 
 Since even the highest and lowest correlation values are not close to 1 or -1, the patterns observed should be considered with a degree of uncertainty.
+
+```{r}
+# Train-test split
+
+train_end <- c(2017, 52)  # End of 2022 (52nd week)
+test_start <- c(2018, 1)  # Start of 2023
+airline_ts.train = window(airline_ts, end=train_end)
+airline_ts.test = window(airline_ts, start=test_start)
+
+ggtsdisplay(airline_ts.train, lag.max = 208, theme = theme_light(), main = "Original training data")
+
+```
+```{r}
+ndiffs(airline_ts.train, alpha = 0.1, test = "adf")
+```
+```{r}
+ndiffs(diff(diff(airline_ts.train, 52), 1), alpha = 0.05, test = "adf")
+```
+```{r}
+nsdiffs(airline_ts.train)
+```
+
+```{r}
+ggtsdisplay(diff(airline_ts.train,52), lag.max = 208, theme = theme_light(), main = "Stationary training data")
+```
+
+```{r}
+M1.fit = sarima(airline_ts.train, p = 1, d = 0, q = 1, P = 1, D = 1, Q = 0, S = 52)
+```
+
+```{r}
+library(forecast)
+ndiffs(airline_ts.train) # Suggests value for `d`
+nsdiffs(airline_ts.train) # Suggests value for `D`
+
+```
+
+```{r}
+# new fit w/other package (forecast) to produce nice plots
+M1.fit_plots = Arima(airline_ts.train, 
+                     order = c(1, 0, 1), 
+                     seasonal = list(order = c(1, 1, 0), period = 52),
+                     include.mean=TRUE)
+
+# verify if the results are the same
+all.equal(M1.fit$fit$coef, M1.fit_plots$coef)
+```
+
 
 ## Bibliography
 
