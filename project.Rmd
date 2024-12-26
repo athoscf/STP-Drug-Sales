@@ -1,0 +1,156 @@
+---
+title: "CE1 - EDA of International Airline Passengers dataset"
+author: "Athos Freitas"
+date: "1 October 2024"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Setup
+```{r message=FALSE}
+library(astsa)
+library(fpp2)
+library(forecast)
+airline_pass <- read.csv("salesmonthly.csv", header = TRUE)
+
+# Get the first column
+first_column <- airline_pass[, 1] 
+
+# Get the number of columns
+num_columns <- ncol(airline_pass)
+
+# Get the nth column
+nth_column <- airline_pass[, num_columns] 
+
+# Combine the first and nth columns into a new data frame
+airline_pass <- data.frame(first_column, nth_column)
+```
+# Monthly International Airline Passengers Dataset
+
+This dataset is a time series of monthly international airline passengers between January of 1949 and December of 1960, totaling 144 entries (rows). There are two columns, one representing the month/year, the other representing the total number of passengers in thousands. 
+Observations were made at the end of each month and there are no missing values. 
+
+```{r}
+head(airline_pass)
+```
+
+
+## Time plot and analysis
+
+```{r}
+airline_ts <- ts(airline_pass[,-1], start=2014, frequency=12)
+tsplot(airline_ts, ylab="No. of passengers in thousands", xlab="Year", main="Monthly International Airline passengers")
+```
+
+
+The time plot reveals an upward trend that appears to be approximately linear. It also indicates a strong seasonal pattern with the presence of heteroscedasticity, characterized by changing variance over time. That is, the effects of seasonality seem to intensify as the level of the series increases. Also, there are no clear outliers in the data.
+
+
+```{r}
+ggmonthplot(airline_ts)+
+  ylab("No. of passengers in thousands") +
+  ggtitle("Month plot of the time series ")
+```
+
+The month plot of the time series shows that the highest average values occur in July and August over the years. In contrast, February, which has fewer days than other months, along with November, exhibits the lowest average values. Additionally, there is a small local peak in December.
+The number of passengers generally grows for every month, which was expected from the upward trend of the time plot.
+
+```{r}
+ggseasonplot(airline_ts)+
+  ylab("No. of passengers in thousands") +
+  ggtitle("Seasonal plot of the time series ")
+```
+
+The seasonal plot of the time series reveals strong seasonality. The number of passengers rises when approaching the summer months on the northern hemisphere and declines when approaching the winter months, although there is a local peak in December and January. This peak is most likely related to holidays and festivities of the end and begging of the year as well as to summer in the southern hemisphere.
+
+## Stabilizing variation in the seasonal pattern
+
+Stabilizing variation in the seasonal pattern allows for time series to be represented by a linear model instead of a multiplicative model. It also makes it possible to use additive decomposition methods.
+
+Using a simple logarithmic transformation it is possible to make the variance approximately constant.
+
+```{r}
+log_airline_ts <- log(airline_ts)
+
+tsplot(log_airline_ts, ylab="log( No. of passengers in thousands )", main="Logarithmic transformation of the time series")
+```
+
+Even with the logarithmic transformation, the variance is still slightly uneven throughout the time series. Using a Box-Cox transformation it is possible to achieve an even more stable variance.
+
+```{r}
+# find lambda value
+lambda <- BoxCox.lambda(airline_ts) # approximately -0.29
+
+boxcox_airline_ts <- BoxCox(airline_ts, lambda)
+
+tsplot(boxcox_airline_ts, ylab="Box-Cox( passengers ), Lambda approx. -0.29", main="Box-Cox transformation of the time series")
+```
+
+Although this method achieves nearly constant variance, the value of the Y axis starts to depart too much from its original meaning and makes that value more difficult to understand and analyse. Therefore, for the following graphs and methods that require homogeneous variance the log transformed time series will be used.
+
+```{r}
+ggmonthplot(log_airline_ts)+
+  ylab("log( No. of passengers in thousands )") +
+  ggtitle("Month plot of the log transformed time series")
+```
+
+When compared to the month plot of the original time series, this month plot is very similar and the previous observations are still true. The main distinction on this plot is that the differences between values on months at earlier years are more similar to the differences on later years, which is expected as the fluctuation in variance was reduced.
+
+```{r}
+ggseasonplot(log_airline_ts)+
+  ylab("log( No. of passengers in thousands )") +
+  ggtitle("Seasonal plot of the log transformed time series ")
+```
+
+The seasonal plot using the log transformed time series is also very similar to the original seasonal plot, although some differences should be noted. Particularly, the spacing between the lines of each year became more even, as is expected when the fluctuation in variance is reduced.
+Notably, the stabilization of variance made some shifts in the seasonality across years more evident. One of the shifts was in the month of January. The value seems to go up in relation to February and March and becomes a local high. Another shift made clear was in the values between the months of March and May, which start as a decline on earlier years but eventually plateaus and even becomes an increase in 1960.
+
+## Decomposition
+
+Since the International Airline Passengers time series presents heteroscedasticity, the most recommended decomposition type is multiplicative. However, the log transformed time series maintains near constant variance and can be decomposed using additive decomposition methods.
+
+```{r}
+mult_decomposed_ts <- decompose(airline_ts, type = "multiplicative") 
+autoplot(mult_decomposed_ts, xlab="Year") + 
+ggtitle("Classical multiplicative decomposition of the time series")
+```
+
+```{r}
+add_decomposed_ts <- decompose(log_airline_ts, type = "additive") 
+autoplot(add_decomposed_ts, xlab="Year") + 
+ggtitle("Classical additive decomposition of log transformed time series")
+```
+
+Both methods result in very similarly shaped decomposition graphs. 
+
+### Trend
+
+On both graphs the trend is a nearly linear and positive. 
+
+### Seasonality
+
+The seasonal component corresponds to a lowest point in November, which grows until January, a small dip in February, a local high in March followed by a small dip in April, a rapid increase from May to June, reaching its highest peak and maintaining it in August, which is followed by the steepest decline back into November. 
+These observations mostly align with the initial observations of the month plot, although some variation in seasonality was expected and these decomposition methods do not account for that.
+ 
+### Remainder (Random component)
+
+The remainder values are lowest in a period between 1953 and 1957 which may indicate the trend and seasonality components generated are more fit for this period than for before or after. This may have been caused by the invariable seasonal component of these methods.
+
+By making a lag plot of the remainder component it is possible to analyse autocorrelation patterns that go beyond trend and seasonality.
+
+```{r}
+remainder_ts <- na.omit(add_decomposed_ts$random)
+lag1.plot(remainder_ts,12)
+```
+
+Most correlation values present are close to zero, indicating the absence of correlation. The slightly higher correlation of the lag1 plot (of 0.40) indicates some autocorrelation between consecutive months. The negative value of the lag4 plot (of -0.33) indicates a possible 3 to 4 month cycle, that is, high values tend to be followed by low values 4 months later and vice-versa. The lag12 plot has relatively high correlation (of 0.29) and indicates some correlation between the values of the "same" month on consecutive years. 
+Since even the highest and lowest correlation values are not close to 1 or -1, the patterns observed should be considered with a degree of uncertainty.
+
+## Bibliography
+
+- Box, G. E. P., Jenkins, G. M. and Reinsel, G. C. (1976) Time Series Analysis, Forecasting and Control. Third Edition. Holden-Day. Series G.
+- Hyndman, R. J., & Athanasopoulos, G. (2018). Forecasting: Principles and Practice. (2nd ed.) OTexts. https://otexts.org/fpp2/
+- https://en.wikipedia.org/wiki/Homoscedasticity_and_heteroscedasticity
