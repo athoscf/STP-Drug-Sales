@@ -1,0 +1,217 @@
+---
+title: "Analysis and Forecasting of Pharmaceutical Drug Sales Data"
+author: "Athos Freitas, Luís Du"
+date: "4 January 2025"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(fpp2)
+library(forecast)
+library(astsa)
+library(zoo)
+library(ggplot2)
+library(lubridate)
+library(dplyr)
+library(scales)
+library(tsbox)
+library(xts)
+library(latex2exp)
+
+dataset <- read.csv("salesmonthly", header = TRUE)
+drug_sales <- data.frame(dataset[, 1], dataset[, 3])
+head(dataset)
+time_series <- ts(drug_sales[,-1], start = 2014, frequency = 12)
+```
+
+```{r}
+astsa::acf2(time_series, max.lag =104)
+```
+### Time plot
+
+```{r}
+tsplot(time_series, ylab = "Sales", col = 4, lwd = 2, main = "R06 Drug Sales")
+```
+
+```{r}
+ggsubseriesplot(time_series) +
+  ylab("Sales") +
+  xlab("Week") +
+  ggtitle("Weekly Seasonal Plot: M01AE Drug Sales")
+```
+
+
+```{r}
+ggseasonplot(time_series) +
+  ylab("Sales") +
+  xlab("Week") +
+  ggtitle("Weekly Seasonal Plot: M01AE Drug Sales")
+```
+
+```{r}
+ts.stlper <- stl(time_series, s.window = "periodic")
+ts.stl <- stl(time_series, s.window = 52)
+plot(ts.stlper)
+```
+
+```{r}
+add_decomposed_ts <- decompose(time_series, type = "additive") 
+autoplot(add_decomposed_ts, xlab="Year") + 
+ggtitle("Classical additive decomposition")
+```
+
+```{r}
+# Train-test split
+time_series <- log(time_series)
+train_end <- c(2018, 52)  # End of 2022 (52nd week)
+test_start <- c(2019, 1)  # Start of 2023
+time_series.train = window(time_series, end=train_end)
+time_series.test = window(time_series, start=test_start)
+```
+
+
+```{r}
+ggtsdisplay(time_series.train, lag.max = 104, theme = theme_light(), main = "Original training data")
+```
+
+
+```{r}
+ggtsdisplay((diff(diff(time_series.train))), lag.max = 156, theme = theme_light(), main = "training data")
+```
+
+```{r}
+ndiffs(time_series.train, alpha = 0.1, test = "adf")
+```
+```{r}
+ndiffs((diff(time_series.train, 52)), alpha = 0.05, test = "adf")
+```
+```{r}
+nsdiffs(time_series.train)
+```
+
+```{r}
+M1.fit <- sarima(time_series.train, p = 0, d = 0, q = 2)
+```
+
+```{r}
+M2.fit <- sarima(time_series.train, p = 1, d = 0, q = 4, P = 0, D = 1, Q = 1, S=52)
+```
+
+```{r}
+
+
+```
+
+```{r}
+M1.fit_plots = Arima(time_series.train, 
+                     order = c(0, 0, 2))
+# forecasting 12-step ahead
+results = forecast(M1.fit_plots, h = length(time_series.test), level = 0)
+
+
+# forecasts plot
+plot(results, main = "Forecasts")
+```
+
+```{r}
+acc = accuracy(results, time_series)
+acc
+```
+
+```{r}
+M2 = Arima(time_series.train, 
+               order = c(4, 0, 4),  
+              seasonal = list(order = c(1, 1, 1), period = 52),
+              fixed = c(NA, 0, 0, NA,
+                           0, 0, 0, NA,
+                            NA, NA))
+
+res2 = forecast(M2, h = length(time_series.test), level = 0)
+
+
+fct.tab = data.frame(Week = as.yearmon(time(time_series.test)), Observed = time_series.test, Forecast = round(res2$mean,
+    2), Error = round((time_series.test - res2$mean), 2), Error_PCT = percent((as.vector((time_series.test -
+    res2$mean)/time_series.test)), accuracy = 0.01))
+
+knitr::kable(fct.tab, digits = 2, align = "lccccc", caption = "Forecasts (52-months ahead)")
+```
+
+
+```{r}
+fct.tab = data.frame(Week = as.yearmon(time(time_series.test)), Observed = time_series.test, Forecast = round(results$mean,
+    2), Error = round((time_series.test - results$mean), 2), Error_PCT = percent((as.vector((time_series.test -
+    results$mean)/time_series.test)), accuracy = 0.01))
+
+knitr::kable(fct.tab, digits = 2, align = "lccccc", caption = "Forecasts (52-months ahead)")
+```
+
+
+```{r}
+autoplot(ts_c(Observed = time_series, `Fixed training (52-step ahead forecast)` = results$mean),
+    ylab = NULL, size = 1, main = "Forecasts from ARIMA(4,0,4)") + scale_color_manual(values = c("black",
+    "tomato")) + theme_light() + theme(legend.title = element_blank(), legend.background = element_blank(),
+    legend.position = c(0.76, 0.1)) + autolayer(results, showgap = F)  
+```
+
+```{r}
+autoplot(ts_c(Observed = time_series, `Fixed training (52-step ahead forecast)` = res2$mean),
+    ylab = NULL, size = 1, main = "Forecasts from ARIMA(4,0,4)") + scale_color_manual(values = c("black",
+    "tomato")) + theme_light() + theme(legend.title = element_blank(), legend.background = element_blank(),
+    legend.position = c(0.76, 0.1)) + autolayer(res2, showgap = F)  
+```
+
+```{r}
+accuracy = rbind(accuracy(results$mean, time_series.test))
+rownames(accuracy) <- c("Fixed training (52-step ahead forecast)")
+
+knitr::kable(accuracy, digits = 4, align = "ccccccc", caption = "Accuracy measures (52-step ahead forecast)")
+```
+
+```{r}
+accuracy = rbind(accuracy(res2$mean, time_series.test))
+rownames(accuracy) <- c("Fixed training (52-step ahead forecast)")
+
+knitr::kable(accuracy, digits = 4, align = "ccccccc", caption = "Accuracy measures (52-step ahead forecast)")
+```
+
+```{r}
+# converting the ts object into a DF
+ts_df = ts_df(time_series)
+
+# forecasting 12 times 1-step ahead
+output = data.frame()
+for (i in 1:12) {
+    df_select = ts_df %>%
+        filter(time <= as.Date("1974-12-01") %m+% months(i))
+
+    ts_select = ts(df_select$value, freq = 12, end = c(year(tail(df_select$time,
+        1)), month(tail(df_select$time, 1))))
+
+    fit = Arima(ts_select, model = M1.fit_plots)
+
+    aux = bind_cols(time = as.Date("1974-12-01") %m+% months(i), value = tail(fitted(fit),
+        1))
+
+    output = bind_rows(output, aux)
+}
+
+# converting output to TS
+M1.fct.v2 = ts_ts(output)
+
+# forecasts plot
+autoplot(ts_c(Observed = time_series, `Fixed training (1-step ahead forecast)` = M1.fct.v2),
+    ylab = NULL, size = 1, main = "Forecasts from ARIMA(0,1,1)(0,1,1)[12]") + scale_color_manual(values = c("black",
+    "gold")) + theme_light() + theme(legend.title = element_blank(), legend.background = element_blank(),
+    legend.position = c(0.76, 0.2))
+```
+
+
+## Bibliography
+
+- Box, G. E. P., Jenkins, G. M. and Reinsel, G. C. (1976) Time Series Analysis, Forecasting and Control. Third Edition. Holden-Day. Series G.
+- Hyndman, R. J., & Athanasopoulos, G. (2018). Forecasting: Principles and Practice. (2nd ed.) OTexts. https://otexts.org/fpp2/
+- https://en.wikipedia.org/wiki/Homoscedasticity_and_heteroscedasticity

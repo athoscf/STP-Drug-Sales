@@ -1,7 +1,7 @@
 ---
-title: "CE1 - EDA of International Airline Passengers dataset"
-author: "Athos Freitas"
-date: "1 October 2024"
+title: "Analysis and Forecasting of Pharmaceutical Drug Sales Data"
+author: "Athos Freitas, Luís Du"
+date: "4 January 2025"
 output: html_document
 ---
 
@@ -9,124 +9,146 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-### Setup
-```{r message=FALSE}
+## Introduction
+
+This project focuses on analyzing and forecasting a well-known time series related to **pharmaceutical drug sales**. The dataset consisted of 600000 transactional data collected in 6 years (period 2014-2019), indicating date and time of sale, pharmaceutical drug brand name and sold quantity. As a result of the interviews with pharmacists, decision was made that the subject of analyses and forecasting will be actual drug categories, instead of the individual drugs. 
+
+The primary objective is to build an accurate forecasting model using the ARIMA methodology. Through this approach, the study aims to identify and model patterns within the data, including seasonality, trends, and noise, to generate reliable predictions.
+
+## Setup - Installing and loading R Packages
+
+The necessary packages — `fpp2`, `forecast`, and `astsa` — are installed as follows:
+
+```{r message=FALSE, warning=FALSE, results='hide'}
+install.packages(c("fpp2", "forecast", "astsa"), repos = c(CRAN = "http://cran.rstudio.com"))
+```
+
+Once installed, the packages are loaded into the R environment:
+
+```{r message=FALSE, warning=FALSE, results='hide'}
 library(fpp2)
 library(forecast)
 library(astsa)
 library(zoo)
 library(ggplot2)
-library(latex2exp)
 library(lubridate)
 library(dplyr)
 library(scales)
 library(tsbox)
-airline_pass <- read.csv("salesweekly.csv", header = TRUE)
-
-# Get the first column
-first_column <- airline_pass[, 1] 
-
-# Get the number of columns
-num_columns <- ncol(airline_pass)
-
-# Get the nth column
-nth_column <- airline_pass[, num_columns] 
-
-# Combine the first and nth columns into a new data frame
-airline_pass <- data.frame(first_column, nth_column)
 ```
-# Monthly International Airline Passengers Dataset
 
-This dataset is a time series of monthly international airline passengers between January of 1949 and December of 1960, totaling 144 entries (rows). There are two columns, one representing the month/year, the other representing the total number of passengers in thousands. 
-Observations were made at the end of each month and there are no missing values. 
+## Reading the data 
+
+The file *"salesweekly.csv"* contains a weekly time series dataset with eight columns, each representing a different drug category. For this analysis, we will focus on the last column, **R06 - Antihistamines for Systemic Use**.
 
 ```{r}
-head(airline_pass)
+dataset <- read.csv("salesweekly.csv", header = TRUE)
+drug_sales <- data.frame(dataset[, 1], dataset[, 2])
+head(dataset)
 ```
 
+## Time plots and Time series components
 
-## Time plot and analysis
+The time series can be constructed by setting the frequency to 52, corresponding to the number of weeks per year. 
 
 ```{r}
-airline_ts <- ts(airline_pass[,-1], start=2014, frequency=52)
-tsplot(airline_ts, ylab="No. of passengers in thousands", xlab="Year", main="Monthly International Airline passengers")
+time_series <- ts(drug_sales[,-1], start = 2014, frequency = 52)
 ```
 
 
-The time plot reveals an upward trend that appears to be approximately linear. It also indicates a strong seasonal pattern with the presence of heteroscedasticity, characterized by changing variance over time. That is, the effects of seasonality seem to intensify as the level of the series increases. Also, there are no clear outliers in the data.
-
+### Time plot
 
 ```{r}
-ggmonthplot(airline_ts)+
-  ylab("No. of passengers in thousands") +
-  ggtitle("Month plot of the time series ")
+tsplot(time_series, ylab = "Sales", col = 4, lwd = 2, main = "R06 Drug Sales")
 ```
 
-The month plot of the time series shows that the highest average values occur in July and August over the years. In contrast, February, which has fewer days than other months, along with November, exhibits the lowest average values. Additionally, there is a small local peak in December.
-The number of passengers generally grows for every month, which was expected from the upward trend of the time plot.
+The time plot reveals an upward trend over the observed period, accompanied by a strong seasonal pattern. Notably, the series exhibits heteroscedasticity, with variance increasing as the level of the series rises. This suggests that seasonal effects become more pronounced at higher sales levels. Additionally, there appears to be a potential outlier around Q2 of 2018.
+
+### Seasonal Plots
+
+For a clear representation of the seasonal patterns we may use the seasonal plots.
 
 ```{r}
-ggseasonplot(airline_ts)+
-  ylab("No. of passengers in thousands") +
-  ggtitle("Seasonal plot of the time series ")
+ggsubseriesplot(time_series) +
+  ylab("Sales") +
+  xlab("Week") +
+  ggtitle("Weekly Seasonal Plot: R06 Drug Sales")
 ```
 
-The seasonal plot of the time series reveals strong seasonality. The number of passengers rises when approaching the summer months on the northern hemisphere and declines when approaching the winter months, although there is a local peak in December and January. This peak is most likely related to holidays and festivities of the end and begging of the year as well as to summer in the southern hemisphere.
+The plot of the time series shows that the highest average values occur in July and August over the years. In contrast, February, which has fewer days than other months, along with November, exhibits the lowest average values. Additionally, there is a small local peak in December.
 
-## Stabilizing variation in the seasonal pattern
+```{r}
+ggseasonplot(time_series) +
+  ylab("Sales") +
+  xlab("Week") +
+  ggtitle("Weekly Seasonal Plot: R06 Drug Sales")
+```
+
+The seasonal plot of the time series reveals strong seasonality. Sales of antihistamines (R06) consistently rise during the second quarter (Q2) of each year and decline during the later months. This peak in Q2 may be associated with seasonal allergies commonly occurring in spring. Additionally, there are occasional smaller peaks in other periods, possibly tied to fluctuations in demand due to specific health conditions or environmental factors.
+
+
+
+## Variance stabilization
 
 Stabilizing variation in the seasonal pattern allows for time series to be represented by a linear model instead of a multiplicative model. It also makes it possible to use additive decomposition methods.
+
+### Logarithmic transformation
 
 Using a simple logarithmic transformation it is possible to make the variance approximately constant.
 
 ```{r}
-log_airline_ts <- log(airline_ts)
+log_time_series <- log(time_series)
 
-tsplot(log_airline_ts, ylab="log( No. of passengers in thousands )", main="Logarithmic transformation of the time series")
+tsplot(log_time_series, ylab="log(Sales)", main="Logarithmic transformation of the time series")
 ```
+
+### Box-Cox transform
 
 Even with the logarithmic transformation, the variance is still slightly uneven throughout the time series. Using a Box-Cox transformation it is possible to achieve an even more stable variance.
 
 ```{r}
-# find lambda value
-lambda <- BoxCox.lambda(airline_ts) # approximately -0.29
+lambda <- BoxCox.lambda(time_series)
+lambda
+```
 
-boxcox_airline_ts <- BoxCox(airline_ts, lambda)
+```{r}
+boxcox_time_series <- BoxCox(time_series, lambda)
 
-tsplot(boxcox_airline_ts, ylab="Box-Cox( passengers ), Lambda approx. -0.29", main="Box-Cox transformation of the time series")
+tsplot(boxcox_time_series, ylab="Box-Cox(Sales)", main="Box-Cox transformation of the time series")
 ```
 
 Although this method achieves nearly constant variance, the value of the Y axis starts to depart too much from its original meaning and makes that value more difficult to understand and analyse. Therefore, for the following graphs and methods that require homogeneous variance the log transformed time series will be used.
 
 ```{r}
-ggmonthplot(log_airline_ts)+
+ggmonthplot(log_time_series)+
   ylab("log( No. of passengers in thousands )") +
   ggtitle("Month plot of the log transformed time series")
 ```
 
-When compared to the month plot of the original time series, this month plot is very similar and the previous observations are still true. The main distinction on this plot is that the differences between values on months at earlier years are more similar to the differences on later years, which is expected as the fluctuation in variance was reduced.
+*When compared to the month plot of the original time series, this month plot is very similar and the previous observations are still true. The main distinction on this plot is that the differences between values on months at earlier years are more similar to the differences on later years, which is expected as the fluctuation in variance was reduced.*
 
 ```{r}
-ggseasonplot(log_airline_ts)+
+ggseasonplot(log_time_series)+
   ylab("log( No. of passengers in thousands )") +
   ggtitle("Seasonal plot of the log transformed time series ")
 ```
 
-The seasonal plot using the log transformed time series is also very similar to the original seasonal plot, although some differences should be noted. Particularly, the spacing between the lines of each year became more even, as is expected when the fluctuation in variance is reduced.
-Notably, the stabilization of variance made some shifts in the seasonality across years more evident. One of the shifts was in the month of January. The value seems to go up in relation to February and March and becomes a local high. Another shift made clear was in the values between the months of March and May, which start as a decline on earlier years but eventually plateaus and even becomes an increase in 1960.
+*The seasonal plot using the log transformed time series is also very similar to the original seasonal plot, although some differences should be noted. Particularly, the spacing between the lines of each year became more even, as is expected when the fluctuation in variance is reduced.
+Notably, the stabilization of variance made some shifts in the seasonality across years more evident. One of the shifts was in the month of January. The value seems to go up in relation to February and March and becomes a local high. Another shift made clear was in the values between the months of March and May, which start as a decline on earlier years but eventually plateaus and even becomes an increase in 1960.*
+
 
 ## Decomposition
 
 Since the International Airline Passengers time series presents heteroscedasticity, the most recommended decomposition type is multiplicative. However, the log transformed time series maintains near constant variance and can be decomposed using additive decomposition methods.
 
 ```{r}
-mult_decomposed_ts <- decompose(airline_ts, type = "multiplicative") 
+mult_decomposed_ts <- decompose(time_series, type = "multiplicative") 
 autoplot(mult_decomposed_ts, xlab="Year") + 
 ggtitle("Classical multiplicative decomposition of the time series")
 ```
 
 ```{r}
-add_decomposed_ts <- decompose(log_airline_ts, type = "additive") 
+add_decomposed_ts <- decompose(log_time_series, type = "additive") 
 autoplot(add_decomposed_ts, xlab="Year") + 
 ggtitle("Classical additive decomposition of log transformed time series")
 ```
@@ -156,45 +178,55 @@ lag1.plot(remainder_ts,12)
 Most correlation values present are close to zero, indicating the absence of correlation. The slightly higher correlation of the lag1 plot (of 0.40) indicates some autocorrelation between consecutive months. The negative value of the lag4 plot (of -0.33) indicates a possible 3 to 4 month cycle, that is, high values tend to be followed by low values 4 months later and vice-versa. The lag12 plot has relatively high correlation (of 0.29) and indicates some correlation between the values of the "same" month on consecutive years. 
 Since even the highest and lowest correlation values are not close to 1 or -1, the patterns observed should be considered with a degree of uncertainty.
 
+
+
+
+
+
+
+
+
+
+
 ```{r}
 # Train-test split
 
 train_end <- c(2017, 52)  # End of 2022 (52nd week)
 test_start <- c(2018, 1)  # Start of 2023
-airline_ts.train = window(airline_ts, end=train_end)
-airline_ts.test = window(airline_ts, start=test_start)
+time_series.train = window(time_series, end=train_end)
+time_series.test = window(time_series, start=test_start)
 
-ggtsdisplay(airline_ts.train, lag.max = 208, theme = theme_light(), main = "Original training data")
+ggtsdisplay(time_series.train, lag.max = 208, theme = theme_light(), main = "Original training data")
 
 ```
 ```{r}
-ndiffs(airline_ts.train, alpha = 0.1, test = "adf")
+ndiffs(time_series.train, alpha = 0.1, test = "adf")
 ```
 ```{r}
-ndiffs(diff(diff(airline_ts.train, 52), 1), alpha = 0.05, test = "adf")
+ndiffs(diff(diff(time_series.train, 52), 1), alpha = 0.05, test = "adf")
 ```
 ```{r}
-nsdiffs(airline_ts.train)
-```
-
-```{r}
-ggtsdisplay(diff(airline_ts.train,52), lag.max = 208, theme = theme_light(), main = "Stationary training data")
+nsdiffs(time_series.train)
 ```
 
 ```{r}
-M1.fit = sarima(airline_ts.train, p = 1, d = 0, q = 1, P = 1, D = 1, Q = 0, S = 52)
+ggtsdisplay(diff(time_series.train,52), lag.max = 208, theme = theme_light(), main = "Stationary training data")
+```
+
+```{r}
+M1.fit = sarima(time_series.train, p = 1, d = 0, q = 1, P = 1, D = 1, Q = 0, S = 52)
 ```
 
 ```{r}
 library(forecast)
-ndiffs(airline_ts.train) # Suggests value for `d`
-nsdiffs(airline_ts.train) # Suggests value for `D`
+ndiffs(time_series.train) # Suggests value for `d`
+nsdiffs(time_series.train) # Suggests value for `D`
 
 ```
 
 ```{r}
 # new fit w/other package (forecast) to produce nice plots
-M1.fit_plots = Arima(airline_ts.train, 
+M1.fit_plots = Arima(time_series.train, 
                      order = c(1, 0, 1), 
                      seasonal = list(order = c(1, 1, 0), period = 52),
                      include.mean=TRUE)
@@ -202,12 +234,14 @@ M1.fit_plots = Arima(airline_ts.train,
 # verify if the results are the same
 all.equal(M1.fit$fit$coef, M1.fit_plots$coef)
 ```
+
+
 ```{r}
 # forecasting 12-step ahead
 M1.fct.v1 = forecast(M1.fit_plots, h = 52, level = 95)
 
 # forecasts plot
-autoplot(ts_c(Observed = airline_ts, `Fixed training (12-step ahead forecast)` = M1.fct.v1$mean),
+autoplot(ts_c(Observed = time_series, `Fixed training (12-step ahead forecast)` = M1.fct.v1$mean),
     ylab = NULL, size = 1, main = "Forecasts from ARIMA(1,0,1)(1,1,0)[12]") + scale_color_manual(values = c("black",
     "tomato")) + theme_light() + theme(legend.title = element_blank(), legend.background = element_blank(),
     legend.position = c(0.76, 0.2)) + autolayer(M1.fct.v1, showgap = F)  #autolayer to not to show the plot gap

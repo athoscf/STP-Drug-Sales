@@ -1,0 +1,96 @@
+---
+title: "Analysis and Forecasting of Pharmaceutical Drug Sales Data"
+author: "Athos Freitas, Luís Du"
+date: "4 January 2025"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(fpp2)
+library(forecast)
+library(astsa)
+library(zoo)
+library(ggplot2)
+library(lubridate)
+library(dplyr)
+library(scales)
+library(tsbox)
+
+dataset <- read.csv("salesweekly.csv", header = TRUE)
+drug_sales <- data.frame(dataset[, 1], dataset[, 9])
+head(dataset)
+time_series <- ts(drug_sales[,-1], start = 2014, frequency = 52)
+```
+
+
+### Time plot
+
+```{r}
+tsplot(time_series, ylab = "Sales", col = 4, lwd = 2, main = "R06 Drug Sales")
+astsa::acf2(diff(diff(time_series.train, 52), 1),max.lag= 156)
+
+```
+
+
+```{r}
+# Train-test split
+
+time_series.train = head(time_series, length(time_series) - 40)
+time_series.test =tail(time_series, 40)
+
+ggtsdisplay(time_series.train, lag.max = 52, theme = theme_light(), main = "Original training data")
+
+```
+```{r}
+ndiffs(time_series.train, alpha = 0.05, test = "kpss", type = "trend")
+```
+```{r}
+ndiffs((diff(time_series.train, 52)), alpha = 0.05, test = "kpss", type = "trend")
+```
+```{r}
+nsdiffs(time_series.train)
+```
+
+```{r}
+M1.fit <- sarima(time_series.train, p = 1, d = 1 , q = 38, P = 0, D = 1, Q = 1, S= 52,
+                
+                 )
+```
+
+```{r}
+M1.fit_plots = Arima(time_series.train, 
+                     order = c(1, 1, 1), 
+                     seasonal = list(order = c(0, 1, 1), period = 52),)
+
+# forecasting 12-step ahead
+results = forecast(M1.fit_plots, h = length(time_series.test))
+
+# forecasts plot
+plot(results, main = "Forecasts")
+```
+
+```{r}
+
+actual_values <- time_series.test
+predicted_values <- results$mean
+
+# Calculate evaluation metrics
+mae <- mean(abs(actual_values - predicted_values))
+mape <- mean(abs((actual_values - predicted_values) / actual_values)) * 100
+rmse <- sqrt(mean((actual_values - predicted_values)^2))
+mae
+mape
+rmse
+```
+
+
+## Bibliography
+
+- Box, G. E. P., Jenkins, G. M. and Reinsel, G. C. (1976) Time Series Analysis, Forecasting and Control. Third Edition. Holden-Day. Series G.
+- Hyndman, R. J., & Athanasopoulos, G. (2018). Forecasting: Principles and Practice. (2nd ed.) OTexts. https://otexts.org/fpp2/
+- https://en.wikipedia.org/wiki/Homoscedasticity_and_heteroscedasticity
